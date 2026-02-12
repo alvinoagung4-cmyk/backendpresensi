@@ -1,63 +1,75 @@
 /**
  * Database Configuration
  * PostgreSQL Connection Pool Setup
+ * Support: Railway, Render, Heroku, Local PostgreSQL
  */
 
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Support cloud database URL (Railway, Render, Heroku)
+console.log('🔧 Configuring database connection...');
+console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log(`🌐 Using: ${process.env.DATABASE_URL ? 'Cloud Database (Railway/Render)' : 'Local Database'}`);
+
+// Create pool configuration
 let poolConfig;
 
 if (process.env.DATABASE_URL) {
-    // Cloud database (e.g., Railway, Render)
+    // ========== CLOUD DATABASE (Railway, Render, Heroku) ==========
     poolConfig = {
         connectionString: process.env.DATABASE_URL,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
+        ssl: {
+            rejectUnauthorized: false  // Required for Railway SSL
+        },
+        max: 20,                        // Max connections
+        idleTimeoutMillis: 30000,       // Close idle after 30s
+        connectionTimeoutMillis: 5000,  // Timeout after 5s
     };
+    console.log('✅ Cloud database configuration ready');
 } else {
-    // Local database
+    // ========== LOCAL DATABASE ==========
     poolConfig = {
         host: process.env.DB_HOST || 'localhost',
         port: process.env.DB_PORT || 5433,
         database: process.env.DB_NAME || 'attendance',
         user: process.env.DB_USER || 'postgres',
         password: process.env.DB_PASSWORD || 'password',
-        
-        // Connection pool settings
-        max: 20,                          // Maximum number of clients in the pool
-        idleTimeoutMillis: 30000,         // Close idle clients after 30 seconds
-        connectionTimeoutMillis: 2000,    // Connection timeout after 2 seconds
-        
-        // SSL Configuration (for production)
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+        ssl: false,
     };
+    console.log(`📺 Local database: ${poolConfig.host}:${poolConfig.port}/${poolConfig.database}`);
 }
 
 // Create connection pool
 const pool = new Pool(poolConfig);
 
-// Handle connection errors
-pool.on('error', (err, client) => {
-    console.error('Unexpected error on idle client:', err);
-    process.exit(-1);
+// Handle pool errors
+pool.on('error', (err) => {
+    console.error('❌ Unexpected error on idle client:', err.message);
+    // Don't exit, just log the error
 });
 
-// Test connection
+// Test database connection
 pool.connect((err, client, release) => {
     if (err) {
-        console.error('Failed to connect to database:', err.message);
+        console.error('❌ Failed to connect to database:');
+        console.error('   Error:', err.message);
+        console.error('   Hint: Check DATABASE_URL or local PostgreSQL settings');
+        // Continue without exiting
     } else {
         console.log('✅ Successfully connected to PostgreSQL database');
-        client?.query('SELECT NOW()', (queryErr, result) => {
+        
+        // Test query
+        client.query('SELECT NOW() as current_time, version() as postgres_version', (queryErr, result) => {
             release();
             if (queryErr) {
-                console.error('Database query test failed:', queryErr);
+                console.error('❌ Database query test failed:', queryErr.message);
             } else {
-                console.log('Database server time:', result?.rows[0]?.now);
+                console.log('✅ Database verification successful');
+                console.log(`   Time: ${result.rows[0].current_time}`);
+                console.log(`   Version: ${result.rows[0].postgres_version.substring(0, 50)}...`);
             }
         });
     }

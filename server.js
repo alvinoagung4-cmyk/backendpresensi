@@ -18,23 +18,52 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ============ DATABASE CONNECTION (PostgreSQL) ============
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'presensi_app',
-  port: process.env.DB_PORT || 5433
-});
+// Support both Railway cloud database and local PostgreSQL
+let pool;
+
+if (process.env.DATABASE_URL) {
+  // ========== RAILWAY / CLOUD DATABASE ==========
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false  // Required for Railway SSL
+    },
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+  console.log('✅ Using Railway Cloud Database');
+} else {
+  // ========== LOCAL DATABASE ==========
+  pool = new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+    database: process.env.DB_NAME || 'presensi_app',
+    port: process.env.DB_PORT || 5433,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+  console.log('✅ Using Local PostgreSQL Database');
+}
 
 // Test database connection
 pool.connect()
   .then(client => {
-    console.log('Database connected');
+    console.log('✅ Database connected successfully');
+    client.query('SELECT NOW() as current_time', (err, result) => {
+      if (err) {
+        console.error('❌ Database query test failed:', err.message);
+      } else {
+        console.log('✅ Database query test passed');
+      }
+    });
     client.release();
   })
   .catch(err => {
     console.error('❌ Database error:', err.message);
-    console.log('Pastikan PostgreSQL berjalan dan database sudah dibuat');
+    console.error('Hint: Check DATABASE_URL (for Railway) or local PostgreSQL settings');
   });
 
 // ============ EMAIL SETUP ============
